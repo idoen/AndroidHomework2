@@ -1,0 +1,31 @@
+<resources>
+    <string name="app_name">Obstacles</string>
+    <string name="toast_crash">אופס! פגעת במכשול.</string>
+    <string name="toast_restart">מחדש! שלושה חיים חדשים.</string>
+    <string name="content_description_life">חיי השחקן</string>
+    <string name="content_description_car">מכונית השחקן</string>
+    <string name="content_description_left">זוז שמאלה</string>
+    <string name="content_description_right">זוז ימינה</string>
+    <string name="content_description_menu">פתיחת תפריט</string>
+    <string name="menu_title">תפריט</string>
+    <string name="menu_mode_buttons">מצב לחצנים</string>
+    <string name="menu_mode_sensors">מצב סנסורים</string>
+    <string name="menu_high_scores">טבלת שיאים</string>
+    <string name="high_scores_table_title">עשרת השיאים הגבוהים</string>
+    <string name="high_scores_map_title">מפת שיאים</string>
+    <string name="high_scores_marker">מיקום שיא</string>
+    <string name="high_scores_placeholder_location">בחרו שיא מהרשימה</string>
+    <string name="high_scores_placeholder_score">מרחק: -- · מטבעות: --</string>
+    <string name="high_score_value_format">מרחק: %1$d · מטבעות: %2$d</string>
+    <string name="distance_value_format">מרחק: %1$d</string>
+    <string name="high_score_coins_format">מטבעות: %1$d</string>
+    <string name="high_score_distance_format">מרחק: %1$d</string>
+    <string name="score_rank_format">שיא %1$d</string>
+    <string name="location_coordinates_format">מיקום: %.5f, %.5f</string>
+    <string name="location_unavailable">מיקום לא זמין</string>
+    <string name="game_over_title">סיכום ניסיון</string>
+    <string name="game_over_distance">מרחק: %1$d</string>
+    <string name="game_over_coins">מטבעות: %1$d</string>
+    <string name="game_over_new_game">משחק חדש</string>
+    <string name="game_over_high_scores">טבלת השיאים</string>
+</resources>

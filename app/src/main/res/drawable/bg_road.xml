@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="1080dp"
+    android:height="1920dp"
+    android:viewportWidth="1080"
+    android:viewportHeight="1920">
+
+    <path
+        android:fillColor="#D9D9D9"
+        android:pathData="M0,0h1080v1920h-1080z" />
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M216,40h12v80h-12z
+            M216,180h12v80h-12z
+            M216,320h12v80h-12z
+            M216,460h12v80h-12z
+            M216,600h12v80h-12z
+            M216,740h12v80h-12z
+            M216,880h12v80h-12z
+            M216,1020h12v80h-12z
+            M216,1160h12v80h-12z
+            M216,1300h12v80h-12z
+            M216,1440h12v80h-12z
+            M216,1580h12v80h-12z
+            M216,1720h12v80h-12z
+            M216,1860h12v80h-12z" />
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M432,40h12v80h-12z
+            M432,180h12v80h-12z
+            M432,320h12v80h-12z
+            M432,460h12v80h-12z
+            M432,600h12v80h-12z
+            M432,740h12v80h-12z
+            M432,880h12v80h-12z
+            M432,1020h12v80h-12z
+            M432,1160h12v80h-12z
+            M432,1300h12v80h-12z
+            M432,1440h12v80h-12z
+            M432,1580h12v80h-12z
+            M432,1720h12v80h-12z
+            M432,1860h12v80h-12z" />
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M648,40h12v80h-12z
+            M648,180h12v80h-12z
+            M648,320h12v80h-12z
+            M648,460h12v80h-12z
+            M648,600h12v80h-12z
+            M648,740h12v80h-12z
+            M648,880h12v80h-12z
+            M648,1020h12v80h-12z
+            M648,1160h12v80h-12z
+            M648,1300h12v80h-12z
+            M648,1440h12v80h-12z
+            M648,1580h12v80h-12z
+            M648,1720h12v80h-12z
+            M648,1860h12v80h-12z" />
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M864,40h12v80h-12z
+            M864,180h12v80h-12z
+            M864,320h12v80h-12z
+            M864,460h12v80h-12z
+            M864,600h12v80h-12z
+            M864,740h12v80h-12z
+            M864,880h12v80h-12z
+            M864,1020h12v80h-12z
+            M864,1160h12v80h-12z
+            M864,1300h12v80h-12z
+            M864,1440h12v80h-12z
+            M864,1580h12v80h-12z
+            M864,1720h12v80h-12z
+            M864,1860h12v80h-12z" />
+</vector>

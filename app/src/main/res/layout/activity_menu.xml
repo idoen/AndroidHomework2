@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/road_dark">
+
+    <TextView
+        android:id="@+id/menuTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/menu_title"
+        android:textColor="@color/white"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="32dp" />
+
+    <Button
+        android:id="@+id/btnModeButtons"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/menu_mode_buttons"
+        app:layout_constraintTop_toBottomOf="@id/menuTitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginHorizontal="32dp"
+        android:layout_marginTop="24dp" />
+
+    <Button
+        android:id="@+id/btnModeSensors"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/menu_mode_sensors"
+        app:layout_constraintTop_toBottomOf="@id/btnModeButtons"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginHorizontal="32dp"
+        android:layout_marginTop="12dp" />
+
+    <Button
+        android:id="@+id/btnHighScores"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/menu_high_scores"
+        app:layout_constraintTop_toBottomOf="@id/btnModeSensors"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginHorizontal="32dp"
+        android:layout_marginTop="12dp" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
