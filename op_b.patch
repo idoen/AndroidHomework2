@@ -1,0 +1,2021 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 9b6407cf1db91c4eae91b9e2f98c7e80fe1f8b8d..d25f7724217112d8a0ebc851178afb47915560b4 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -1,61 +1,50 @@
+ plugins {
+     alias(libs.plugins.android.application)
+     alias(libs.plugins.kotlin.android)
+-    alias(libs.plugins.kotlin.compose)
+ }
+ 
+ android {
+     namespace = "com.example.obstacles"
+     compileSdk = 35
+ 
+     defaultConfig {
+         applicationId = "com.example.obstacles"
+         minSdk = 29
+         targetSdk = 35
+         versionCode = 1
+         versionName = "1.0"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+ 
+     buildTypes {
+         release {
+             isMinifyEnabled = false
+             proguardFiles(
+                 getDefaultProguardFile("proguard-android-optimize.txt"),
+                 "proguard-rules.pro"
+             )
+         }
+     }
+     compileOptions {
+         sourceCompatibility = JavaVersion.VERSION_11
+         targetCompatibility = JavaVersion.VERSION_11
+     }
+     kotlinOptions {
+         jvmTarget = "11"
+     }
+-    buildFeatures {
+-        compose = true
+-    }
+ }
+ 
+ dependencies {
+-
+     implementation(libs.androidx.core.ktx)
+     implementation(libs.androidx.lifecycle.runtime.ktx)
+-    implementation(libs.androidx.activity.compose)
+-    implementation(platform(libs.androidx.compose.bom))
+-    implementation(libs.androidx.ui)
+-    implementation(libs.androidx.ui.graphics)
+-    implementation(libs.androidx.ui.tooling.preview)
+-    implementation(libs.androidx.material3)
++    implementation(libs.androidx.activity.ktx)
++    implementation(libs.androidx.fragment.ktx)
++    implementation(libs.androidx.recyclerview)
++
++    implementation("androidx.constraintlayout:constraintlayout:2.2.1")
++
+     testImplementation(libs.junit)
+     androidTestImplementation(libs.androidx.junit)
+     androidTestImplementation(libs.androidx.espresso.core)
+-    androidTestImplementation(platform(libs.androidx.compose.bom))
+-    androidTestImplementation(libs.androidx.ui.test.junit4)
+-    debugImplementation(libs.androidx.ui.tooling)
+-    debugImplementation(libs.androidx.ui.test.manifest)
+-
+-    implementation("androidx.constraintlayout:constraintlayout:2.2.1")
+-}
+\ No newline at end of file
++}
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 95a86cfa7608942f884eb1ebbdefb780abff5646..ae9ff91f6a9bb25cfc95132ca23cde4104e3b54e 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -1,32 +1,44 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:tools="http://schemas.android.com/tools">
+ 
+     <uses-permission android:name="android.permission.VIBRATE" />
+ 
+     <application
+         android:allowBackup="true"
+         android:dataExtractionRules="@xml/data_extraction_rules"
+         android:fullBackupContent="@xml/backup_rules"
+         android:icon="@mipmap/ic_launcher"
+         android:label="@string/app_name"
+         android:roundIcon="@mipmap/ic_launcher_round"
+         android:supportsRtl="true"
+         android:theme="@style/Theme.Obstacles"
+         tools:targetApi="31">
+         <activity
+-            android:name=".MainActivity"
++            android:name=".MenuActivity"
+             android:exported="true"
+             android:label="@string/app_name"
+             android:theme="@style/Theme.Obstacles">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+ 
+                 <category android:name="android.intent.category.LAUNCHER" />
+             </intent-filter>
+         </activity>
++
++        <activity
++            android:name=".MainActivity"
++            android:exported="false"
++            android:label="@string/app_name"
++            android:theme="@style/Theme.Obstacles" />
++
++        <activity
++            android:name=".highscores.HighScoresActivity"
++            android:exported="false"
++            android:label="@string/high_scores_title"
++            android:theme="@style/Theme.Obstacles" />
+     </application>
+ 
+ </manifest>
+diff --git a/app/src/main/java/com/example/obstacles/MainActivity.kt b/app/src/main/java/com/example/obstacles/MainActivity.kt
+index ba6cfa03072f2dae583d1fbef351df695b680ea3..d27fb99d94e818c238fa9208f8822f04b27c2901 100644
+--- a/app/src/main/java/com/example/obstacles/MainActivity.kt
++++ b/app/src/main/java/com/example/obstacles/MainActivity.kt
+@@ -1,538 +1,343 @@
+ package com.example.obstacles
+ 
+-import android.animation.ValueAnimator
+ import android.content.Context
+-import android.graphics.Rect
+-import android.os.Build
++import android.hardware.Sensor
++import android.hardware.SensorEvent
++import android.hardware.SensorEventListener
++import android.hardware.SensorManager
+ import android.os.Bundle
+-import android.os.Vibrator
+-import android.os.VibratorManager
+ import android.view.Choreographer
+-import android.view.Gravity
+-import android.view.HapticFeedbackConstants
+ import android.view.MotionEvent
+ import android.view.View
+-import android.view.ViewGroup
+-import android.view.ViewTreeObserver
+-import android.widget.FrameLayout
+ import android.widget.ImageButton
+ import android.widget.ImageView
+ import android.widget.LinearLayout
+ import android.widget.Toast
+ import androidx.activity.ComponentActivity
+-import kotlin.math.min
+-
+-class MainActivity : ComponentActivity() {
++import com.example.obstacles.game.GameConfig
++import com.example.obstacles.game.GameEngineListener
++import com.example.obstacles.game.GameState
++import com.example.obstacles.game.ObstacleGameEngine
++import com.example.obstacles.game.ObstacleKind
++import com.example.obstacles.services.AndroidHapticsService
++import com.example.obstacles.services.HapticsService
++import kotlin.math.max
++
++class MainActivity : ComponentActivity(), GameEngineListener {
++
++    companion object {
++        const val EXTRA_CONTROL_MODE = "control_mode"
++        const val EXTRA_SPEED_MODE = "speed_mode"
++    }
+ 
+-    private lateinit var gameArea: FrameLayout
+-    private lateinit var car: ImageView
+     private lateinit var btnLeft: ImageButton
+     private lateinit var btnRight: ImageButton
+     private lateinit var heart1: ImageView
+     private lateinit var heart2: ImageView
+     private lateinit var heart3: ImageView
+-
+     private lateinit var lanesContainer: LinearLayout
+-    private lateinit var laneViews: Array<FrameLayout>
+-    private lateinit var carOverlay: FrameLayout
+-
+-    private var lives = 3
+-    private var carLane = 1
+-
+-    private var isReady = false
+-    private var isRunning = false
+-    private var lastFrameNanos = 0L
+-    private val choreographer: Choreographer = Choreographer.getInstance()
+ 
+-    private var carAnimator: ValueAnimator? = null
+-    private var carSizePx = 0
++    private lateinit var laneObstacleCells: List<MutableList<ImageView>>
++    private lateinit var carSlots: MutableList<ImageView?>
+ 
+-    private val baseObstacleSpeed by lazy {
+-        520f * resources.displayMetrics.density
+-    }
++    private lateinit var engine: ObstacleGameEngine
++    private lateinit var hapticsService: HapticsService
++    private var controlMode: ControlMode = ControlMode.BUTTONS
+ 
+-    private val obstacles = mutableListOf<Obstacle>()
+-    private val obstacleTypes = listOf(
+-        ObstacleType(R.drawable.ic_obstacle_cone, 96, 1.05f),
+-        ObstacleType(R.drawable.ic_obstacle_barrier, 118, 1.2f),
+-        ObstacleType(R.drawable.ic_obstacle_tire, 92, 0.9f)
+-    )
++    private var sensorManager: SensorManager? = null
++    private var accelerometer: Sensor? = null
++    private var lastSensorLane: Int? = null
+ 
+-    private val random = java.util.Random()
+-    private var spawnTimer = 0f
+-    private var nextSpawnIn = randomSpawnInterval()
+-
+-    private val tmpRectA = Rect()
+-    private val tmpRectB = Rect()
+-    private val tmpLocA = IntArray(2)
+-    private val tmpLocB = IntArray(2)
+-
+-    private data class Obstacle(
+-        val view: ImageView,
+-        var lane: Int = 0,
+-        var y: Float = 0f,
+-        var active: Boolean = false,
+-        var speed: Float = 0f
+-    )
++    private val choreographer: Choreographer = Choreographer.getInstance()
++    private var lastFrameNanos = 0L
++    private var isRunning = false
+ 
+-    private data class ObstacleType(
+-        val drawableRes: Int,
+-        val sizeDp: Int,
+-        val speedMultiplier: Float
++    private val obstacleDrawables = mapOf(
++        ObstacleKind.CONE to R.drawable.ic_obstacle_cone,
++        ObstacleKind.BARRIER to R.drawable.ic_obstacle_barrier,
++        ObstacleKind.TIRE to R.drawable.ic_obstacle_tire
+     )
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+         setContentView(R.layout.activity_main)
+ 
+-        carLane = 1
+-
+-        gameArea = findViewById(R.id.gameArea)
+-        car = findViewById(R.id.car)
+         btnLeft = findViewById(R.id.btnLeft)
+         btnRight = findViewById(R.id.btnRight)
+         heart1 = findViewById(R.id.heart1)
+         heart2 = findViewById(R.id.heart2)
+         heart3 = findViewById(R.id.heart3)
++        lanesContainer = findViewById(R.id.lanesContainer)
++
++        hapticsService = AndroidHapticsService(this, window.decorView)
++        controlMode = ControlMode.fromIntent(intent)
++
++        engine = ObstacleGameEngine(buildConfigFromIntent())
++
++        setupLanes()
++        configureControls()
+ 
+         btnLeft.setOnTouchListener { view, event -> handleMoveTouch(event, -1, view) }
+         btnRight.setOnTouchListener { view, event -> handleMoveTouch(event, 1, view) }
+ 
+-        gameArea.viewTreeObserver.addOnGlobalLayoutListener(
+-            object : ViewTreeObserver.OnGlobalLayoutListener {
+-                override fun onGlobalLayout() {
+-                    gameArea.viewTreeObserver.removeOnGlobalLayoutListener(this)
+-
+-                    setupLanes()
+-                    setupCarOverlay()
+-                    setupObstaclesPool()
+-
+-                    lanesContainer.viewTreeObserver.addOnGlobalLayoutListener(
+-                        object : ViewTreeObserver.OnGlobalLayoutListener {
+-                            override fun onGlobalLayout() {
+-                                lanesContainer.viewTreeObserver.removeOnGlobalLayoutListener(this)
+-                                carLane = 1
+-                                placeCarInitial()
+-                                isReady = true
+-                                startGameLoop()
+-                            }
+-                        }
+-                    )
+-                }
+-            }
+-        )
++        engine.listener = this
++        engine.reset()
++        startGameLoop()
+     }
+ 
+     private fun setupLanes() {
+-        lanesContainer = LinearLayout(this).apply {
+-            orientation = LinearLayout.HORIZONTAL
+-            layoutParams = FrameLayout.LayoutParams(
+-                FrameLayout.LayoutParams.MATCH_PARENT,
+-                FrameLayout.LayoutParams.MATCH_PARENT
+-            )
+-        }
++        lanesContainer.removeAllViews()
++        val rows = engine.config.obstacleRows + 1
++        val laneCount = engine.config.laneCount
++
++        laneObstacleCells = List(laneCount) { ArrayList() }
++        carSlots = MutableList(laneCount) { null }
+ 
+-        laneViews = Array(3) {
+-            FrameLayout(this).apply {
++        repeat(laneCount) { lane ->
++            val laneColumn = LinearLayout(this).apply {
++                orientation = LinearLayout.VERTICAL
++                weightSum = rows.toFloat()
+                 layoutParams = LinearLayout.LayoutParams(
+                     0,
+                     LinearLayout.LayoutParams.MATCH_PARENT,
+                     1f
+                 )
+             }
+-        }
+-
+-        laneViews.forEach { lanesContainer.addView(it) }
+-        gameArea.addView(lanesContainer)
+-    }
+-
+-    private fun setupCarOverlay() {
+-        carOverlay = FrameLayout(this).apply {
+-            layoutParams = FrameLayout.LayoutParams(
+-                FrameLayout.LayoutParams.MATCH_PARENT,
+-                FrameLayout.LayoutParams.MATCH_PARENT
+-            )
+-        }
+-        gameArea.addView(carOverlay)
+-
+-        btnLeft.bringToFront()
+-        btnRight.bringToFront()
+-        heart1.bringToFront()
+-        heart2.bringToFront()
+-        heart3.bringToFront()
+-    }
+-
+-    private fun placeCarInitial() {
+-        (car.parent as? ViewGroup)?.removeView(car)
+-
+-        carSizePx = dpToPx(60)
+-        val bottomMargin = computeCarBottomMargin()
+-        val left = laneCenterX(carLane) - carSizePx / 2
+-
+-        val lp = FrameLayout.LayoutParams(carSizePx, carSizePx).apply {
+-            gravity = Gravity.BOTTOM or Gravity.START
+-            leftMargin = left
+-            this.bottomMargin = bottomMargin
+-        }
+-
+-        carOverlay.addView(car, lp)
+-    }
+-
+-    private fun computeCarBottomMargin(): Int {
+-        val topBtn = min(btnLeft.top, btnRight.top)
+-        val marginFromBottom = (gameArea.height - topBtn) + dpToPx(10)
+-        return marginFromBottom.coerceAtLeast(dpToPx(16))
+-    }
+-
+-    private fun laneCenterX(lane: Int): Int {
+-        val l = lane.coerceIn(0, 2)
+-        val left = laneViews[l].left
+-        val w = laneViews[l].width
+-        return left + w / 2
+-    }
+-
+-    private fun moveCar(direction: Int) {
+-        if (!isReady) return
+-
+-        val wrapLeft = (carLane == 0 && direction < 0)
+-        val wrapRight = (carLane == 2 && direction > 0)
+-
+-        if (wrapLeft) {
+-            carLane = 2
+-            animateCarWrap(exitToLeft = true, targetLane = 2)
+-            return
+-        }
+-
+-        if (wrapRight) {
+-            carLane = 0
+-            animateCarWrap(exitToLeft = false, targetLane = 0)
+-            return
+-        }
+-
+-        val target = (carLane + direction).coerceIn(0, 2)
+-        carLane = target
+-        animateCarToLane(target)
+-    }
+-
+-    private fun animateCarToLane(targetLane: Int) {
+-        val lp = car.layoutParams as? FrameLayout.LayoutParams ?: return
+-        val targetLeft = laneCenterX(targetLane) - carSizePx / 2
+-
+-        if (lp.leftMargin == targetLeft) return
+-
+-        carAnimator?.cancel()
+-        carAnimator = ValueAnimator.ofInt(lp.leftMargin, targetLeft).apply {
+-            duration = 140L
+-            addUpdateListener { anim ->
+-                val v = anim.animatedValue as Int
+-                setCarLeftMargin(v)
+-            }
+-            start()
+-        }
+-    }
+-
+-    private fun animateCarWrap(exitToLeft: Boolean, targetLane: Int) {
+-        val lp = car.layoutParams as? FrameLayout.LayoutParams ?: return
+-        val overlayW = carOverlay.width
+-        if (overlayW <= 0) {
+-            animateCarToLane(targetLane)
+-            return
+-        }
+-
+-        val exitLeft = -carSizePx - dpToPx(12)
+-        val exitRight = overlayW + dpToPx(12)
+-        val entryLeft = exitLeft
+-        val entryRight = exitRight
+-
+-        val exitTarget = if (exitToLeft) exitLeft else exitRight
+-        val entryStart = if (exitToLeft) entryRight else entryLeft
+-        val finalLeft = laneCenterX(targetLane) - carSizePx / 2
+-
+-        carAnimator?.cancel()
+-
+-        val first = ValueAnimator.ofInt(lp.leftMargin, exitTarget).apply {
+-            duration = 140L
+-            addUpdateListener { anim ->
+-                val v = anim.animatedValue as Int
+-                setCarLeftMargin(v)
+-            }
+-        }
+-
+-        first.addListener(object : android.animation.Animator.AnimatorListener {
+-            override fun onAnimationStart(animation: android.animation.Animator) {}
+-            override fun onAnimationEnd(animation: android.animation.Animator) {
+-                setCarLeftMargin(entryStart)
+-                carAnimator = ValueAnimator.ofInt(entryStart, finalLeft).apply {
+-                    duration = 160L
+-                    addUpdateListener { anim ->
+-                        val v = anim.animatedValue as Int
+-                        setCarLeftMargin(v)
+-                    }
+-                    start()
+-                }
+-            }
+-
+-            override fun onAnimationCancel(animation: android.animation.Animator) {}
+-            override fun onAnimationRepeat(animation: android.animation.Animator) {}
+-        })
+-
+-        carAnimator = first
+-        first.start()
+-    }
++            repeat(engine.config.obstacleRows) {
++                val cell = ImageView(this).apply {
++                    alpha = 0f
++                    scaleType = ImageView.ScaleType.CENTER_INSIDE
++                    layoutParams = LinearLayout.LayoutParams(
++                        LinearLayout.LayoutParams.MATCH_PARENT,
++                        0,
++                        1f
++                    )
++                }
++                laneObstacleCells[lane].add(cell)
++                laneColumn.addView(cell)
++            }
+ 
+-    private fun setCarLeftMargin(left: Int) {
+-        val lp = car.layoutParams as? FrameLayout.LayoutParams ?: return
+-        if (lp.leftMargin == left) return
+-        lp.leftMargin = left
+-        car.layoutParams = lp
++            val carSlot = ImageView(this).apply {
++                setImageResource(R.drawable.ic_car)
++                contentDescription = getString(R.string.content_description_car)
++                alpha = if (lane == engine.state.carLane) 1f else 0f
++                scaleType = ImageView.ScaleType.CENTER_INSIDE
++                layoutParams = LinearLayout.LayoutParams(
++                    LinearLayout.LayoutParams.MATCH_PARENT,
++                    0,
++                    1f
++                )
++            }
++            carSlots[lane] = carSlot
++            laneColumn.addView(carSlot)
++
++            lanesContainer.addView(laneColumn)
++        }
+     }
+ 
+     private fun handleMoveTouch(event: MotionEvent, direction: Int, view: View): Boolean {
+         return when (event.action) {
+             MotionEvent.ACTION_DOWN -> {
+-                moveCar(direction)
++                if (controlMode == ControlMode.BUTTONS) {
++                    engine.moveCar(direction)
++                }
+                 true
+             }
+ 
+             MotionEvent.ACTION_UP -> {
+                 view.performClick()
+                 true
+             }
+ 
+             MotionEvent.ACTION_CANCEL -> true
+             else -> false
+         }
+     }
+ 
+-    private fun setupObstaclesPool() {
+-        repeat(6) {
+-            val iv = ImageView(this).apply {
+-                scaleType = ImageView.ScaleType.CENTER_INSIDE
+-                visibility = View.INVISIBLE
+-            }
+-            obstacles += Obstacle(view = iv, y = 0f, active = false, speed = 0f)
+-        }
++    override fun onStateUpdated(state: GameState) {
++        render(state)
+     }
+ 
+-    private fun startGameLoop() {
+-        if (!isReady) return
+-        if (isRunning) return
+-        isRunning = true
+-        lastFrameNanos = 0L
+-        choreographer.postFrameCallback(frameCallback)
++    override fun onCrash(state: GameState) {
++        hapticsService.performCrashHaptic()
++        Toast.makeText(this, getString(R.string.toast_crash), Toast.LENGTH_SHORT).show()
+     }
+ 
+-    private fun stopGameLoop() {
+-        isRunning = false
+-        choreographer.removeFrameCallback(frameCallback)
++    override fun onGameOver(state: GameState) {
++        Toast.makeText(this, getString(R.string.toast_restart), Toast.LENGTH_SHORT).show()
++        engine.reset()
+     }
+ 
+-    private val frameCallback: Choreographer.FrameCallback =
+-        Choreographer.FrameCallback { frameTimeNanos ->
+-            if (!isRunning || !isReady) return@FrameCallback
+-
+-            if (lastFrameNanos == 0L) lastFrameNanos = frameTimeNanos
+-            val dt = (frameTimeNanos - lastFrameNanos) / 1_000_000_000f
+-            lastFrameNanos = frameTimeNanos
++    private fun render(state: GameState) {
++        updateHearts(state.lives)
++        updateCarSlots(state.carLane)
++        updateObstacleCells(state)
++    }
+ 
+-            updateObstacles(dt)
+-            maybeSpawnObstacle(dt)
++    private fun updateHearts(lives: Int) {
++        heart1.visibility = if (lives >= 1) View.VISIBLE else View.INVISIBLE
++        heart2.visibility = if (lives >= 2) View.VISIBLE else View.INVISIBLE
++        heart3.visibility = if (lives >= 3) View.VISIBLE else View.INVISIBLE
++    }
+ 
+-            choreographer.postFrameCallback(frameCallback)
+-        }
++    private fun updateCarSlots(carLane: Int) {
++        for (lane in 0 until engine.config.laneCount) {
++            val slot = carSlots[lane]
++            slot?.alpha = if (lane == carLane) 1f else 0f
++        }
++    }
+ 
+-    private fun updateObstacles(dt: Float) {
+-        val laneHeight = laneViews[0].height
+-        if (laneHeight <= 0) return
+-
+-        rectOnScreen(car, tmpRectA, 0.18f, tmpLocA)
+-
+-        for (o in obstacles) {
+-            if (!o.active) continue
+-
+-            o.y += o.speed * dt
+-
+-            if (o.y > laneHeight + o.view.height) {
+-                deactivateObstacle(o)
+-                continue
++    private fun updateObstacleCells(state: GameState) {
++        for (lane in 0 until engine.config.laneCount) {
++            laneObstacleCells[lane].forEach { cell ->
++                cell.alpha = 0f
++                cell.setImageDrawable(null)
+             }
+-
+-            updateTopMargin(o.view, o.y.toInt())
+-
+-            rectOnScreen(o.view, tmpRectB, 0.14f, tmpLocB)
+-            if (Rect.intersects(tmpRectA, tmpRectB)) {
+-                onCrash(o)
+-                break
+-            }
+         }
+-    }
+ 
+-    private fun rectOnScreen(view: View, out: Rect, insetFraction: Float, loc: IntArray) {
+-        view.getLocationOnScreen(loc)
+-        val left = loc[0]
+-        val top = loc[1]
+-        out.set(left, top, left + view.width, left + view.height)
+-
+-        val insetX = (out.width() * insetFraction).toInt()
+-        val insetY = (out.height() * insetFraction).toInt()
+-        out.inset(insetX, insetY)
++        for (obstacle in state.obstacles) {
++            if (obstacle.row >= engine.config.obstacleRows) continue
++            val cell = laneObstacleCells[obstacle.lane][obstacle.row]
++            val drawable = obstacleDrawables[obstacle.kind]
++            if (drawable != null) {
++                cell.setImageResource(drawable)
++                cell.alpha = 1f
++            }
++        }
+     }
+ 
+-    private fun maybeSpawnObstacle(dt: Float) {
+-        spawnTimer += dt
+-        if (spawnTimer < nextSpawnIn) return
+-
+-        val free = obstacles.firstOrNull { !it.active } ?: return
+-        val type = obstacleTypes[random.nextInt(obstacleTypes.size)]
+-        val sizePx = dpToPx(type.sizeDp)
+-
+-        free.lane = random.nextInt(3)
+-        free.y = -sizePx.toFloat()
+-        free.speed = baseObstacleSpeed * type.speedMultiplier
+-        free.active = true
+-
+-        free.view.setImageResource(type.drawableRes)
+-        free.view.visibility = View.VISIBLE
+-
+-        attachToLane(free.view, free.lane, sizePx)
+-        updateTopMargin(free.view, free.y.toInt())
+-
+-        spawnTimer = 0f
+-        nextSpawnIn = randomSpawnInterval()
++    private fun startGameLoop() {
++        if (isRunning) return
++        isRunning = true
++        lastFrameNanos = 0L
++        choreographer.postFrameCallback(frameCallback)
+     }
+ 
+-    private fun attachToLane(view: ImageView, lane: Int, sizePx: Int) {
+-        val target = laneViews[lane]
++    private fun stopGameLoop() {
++        isRunning = false
++        choreographer.removeFrameCallback(frameCallback)
++    }
+ 
+-        if (view.parent !== target) {
+-            (view.parent as? ViewGroup)?.removeView(view)
++    private val frameCallback = Choreographer.FrameCallback { frameTimeNanos ->
++        if (!isRunning) return@FrameCallback
+ 
+-            val lp = FrameLayout.LayoutParams(sizePx, sizePx).apply {
+-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+-                topMargin = 0
+-            }
+-            target.addView(view, lp)
+-        } else {
+-            val lp = view.layoutParams as FrameLayout.LayoutParams
+-            lp.width = sizePx
+-            lp.height = sizePx
+-            lp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+-            view.requestLayout()
+-        }
+-    }
++        if (lastFrameNanos == 0L) lastFrameNanos = frameTimeNanos
++        val dt = (frameTimeNanos - lastFrameNanos) / 1_000_000_000f
++        lastFrameNanos = frameTimeNanos
+ 
+-    private fun updateTopMargin(view: View, top: Int) {
+-        val lp = view.layoutParams as? FrameLayout.LayoutParams ?: return
+-        if (lp.topMargin == top) return
+-        lp.topMargin = top
+-        view.requestLayout()
++        engine.update(max(dt, 0f))
++        choreographer.postFrameCallback(frameCallback)
+     }
+ 
+-    private fun deactivateObstacle(o: Obstacle) {
+-        o.active = false
+-        o.view.visibility = View.INVISIBLE
+-        (o.view.parent as? ViewGroup)?.removeView(o.view)
++    override fun onPause() {
++        super.onPause()
++        if (controlMode == ControlMode.SENSORS) {
++            unregisterSensors()
++        }
++        stopGameLoop()
+     }
+ 
+-    private fun onCrash(o: Obstacle) {
+-        deactivateObstacle(o)
++    override fun onResume() {
++        super.onResume()
++        if (controlMode == ControlMode.SENSORS) {
++            registerSensors()
++        }
++        startGameLoop()
++    }
+ 
+-        lives--
+-        updateHearts()
+-
+-        vibrate()
+-        Toast.makeText(this, getString(R.string.toast_crash), Toast.LENGTH_SHORT).show()
+-
+-        if (lives <= 0) {
+-            Toast.makeText(this, getString(R.string.toast_restart), Toast.LENGTH_SHORT).show()
+-            resetGame()
+-        }
+-    }
++    private fun configureControls() {
++        val buttonsVisible = controlMode == ControlMode.BUTTONS
++        btnLeft.visibility = if (buttonsVisible) View.VISIBLE else View.INVISIBLE
++        btnRight.visibility = if (buttonsVisible) View.VISIBLE else View.INVISIBLE
+ 
+-    private fun updateHearts() {
+-        heart1.visibility = if (lives >= 1) View.VISIBLE else View.INVISIBLE
+-        heart2.visibility = if (lives >= 2) View.VISIBLE else View.INVISIBLE
+-        heart3.visibility = if (lives >= 3) View.VISIBLE else View.INVISIBLE
++        if (controlMode == ControlMode.SENSORS) {
++            sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
++            accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
++        }
+     }
+ 
+-    private fun resetGame() {
+-        lives = 3
+-        updateHearts()
+-
+-        obstacles.forEach { deactivateObstacle(it) }
+-
+-        carLane = 1
+-        placeCarInitial()
+-
+-        spawnTimer = 0f
+-        nextSpawnIn = randomSpawnInterval()
++    private fun registerSensors() {
++        val manager = sensorManager ?: return
++        val sensor = accelerometer ?: return
++        manager.registerListener(sensorListener, sensor, SensorManager.SENSOR_DELAY_GAME)
+     }
+ 
+-    private fun vibrate() {
+-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+-            val manager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+-            manager?.defaultVibrator
+-        } else {
+-            @Suppress("DEPRECATION")
+-            getSystemService(VIBRATOR_SERVICE) as? Vibrator
+-        }
++    private fun unregisterSensors() {
++        sensorManager?.unregisterListener(sensorListener)
++    }
+ 
+-        val ok = vibrator?.let {
+-            if (!it.hasVibrator()) return@let false
+-            try {
+-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+-                    it.vibrate(
+-                        android.os.VibrationEffect.createOneShot(
+-                            200,
+-                            android.os.VibrationEffect.DEFAULT_AMPLITUDE
+-                        )
+-                    )
+-                } else {
+-                    @Suppress("DEPRECATION")
+-                    it.vibrate(200)
++    private val sensorListener = object : SensorEventListener {
++        override fun onSensorChanged(event: SensorEvent) {
++            val x = event.values.firstOrNull() ?: return
++            val laneChange = when {
++                x > 3.5f -> -1
++                x < -3.5f -> 1
++                else -> 0
++            }
++
++            if (laneChange != 0) {
++                val targetLane = (engine.state.carLane + laneChange).floorMod(engine.config.laneCount)
++                if (lastSensorLane != targetLane) {
++                    engine.moveCar(laneChange)
++                    lastSensorLane = targetLane
+                 }
+-                true
+-            } catch (_: Exception) {
+-                false
++            } else {
++                lastSensorLane = null
+             }
+-        } ?: false
+-
+-        if (!ok) {
+-            val target = if (::gameArea.isInitialized) gameArea else window?.decorView
+-            target?.performHapticFeedback(
+-                HapticFeedbackConstants.LONG_PRESS,
+-                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING or
+-                        HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
+-            )
+         }
+-    }
+ 
+-    private fun dpToPx(dp: Int): Int {
+-        val density = resources.displayMetrics.density
+-        return (dp * density + 0.5f).toInt()
++        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+     }
+ 
+-    private fun randomSpawnInterval(): Float {
+-        return 0.7f + random.nextFloat() * 0.5f
++    private fun buildConfigFromIntent(): GameConfig {
++        val speedMode = SpeedMode.fromIntent(intent)
++        val defaults = GameConfig()
++        return GameConfig(
++            laneCount = defaults.laneCount,
++            obstacleRows = defaults.obstacleRows,
++            startingLives = defaults.startingLives,
++            moveIntervalSeconds = speedMode.moveIntervalSeconds,
++            minSpawnInterval = speedMode.minSpawnInterval,
++            maxSpawnInterval = speedMode.maxSpawnInterval
++        )
+     }
+ 
+-    override fun onPause() {
+-        super.onPause()
+-        stopGameLoop()
+-        carAnimator?.cancel()
+-        carAnimator = null
++}
++
++private fun Int.floorMod(mod: Int): Int {
++    val value = this % mod
++    return if (value < 0) value + mod else value
++}
++
++enum class ControlMode {
++    BUTTONS,
++    SENSORS;
++
++    companion object {
++        fun fromIntent(intent: android.content.Intent): ControlMode {
++            return when (intent.getStringExtra(MainActivity.EXTRA_CONTROL_MODE)) {
++                SENSORS.name -> SENSORS
++                else -> BUTTONS
++            }
++        }
+     }
++}
+ 
+-    override fun onResume() {
+-        super.onResume()
+-        if (isReady) {
+-            val lp = car.layoutParams as? FrameLayout.LayoutParams
+-            if (lp != null) {
+-                lp.bottomMargin = computeCarBottomMargin()
+-                car.layoutParams = lp
+-                animateCarToLane(carLane)
++enum class SpeedMode(
++    val moveIntervalSeconds: Float,
++    val minSpawnInterval: Float,
++    val maxSpawnInterval: Float
++) {
++    SLOW(moveIntervalSeconds = 0.45f, minSpawnInterval = 0.8f, maxSpawnInterval = 1.25f),
++    FAST(moveIntervalSeconds = 0.28f, minSpawnInterval = 0.55f, maxSpawnInterval = 0.9f);
++
++    companion object {
++        fun fromIntent(intent: android.content.Intent): SpeedMode {
++            return when (intent.getStringExtra(MainActivity.EXTRA_SPEED_MODE)) {
++                FAST.name -> FAST
++                else -> SLOW
+             }
+-            startGameLoop()
+         }
+     }
+ }
+diff --git a/app/src/main/java/com/example/obstacles/MenuActivity.kt b/app/src/main/java/com/example/obstacles/MenuActivity.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..11dc73faccdac0d65f349e8ba6ee022fb33791ec
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/MenuActivity.kt
+@@ -0,0 +1,36 @@
++package com.example.obstacles
++
++import android.content.Intent
++import android.os.Bundle
++import android.widget.Button
++import androidx.activity.ComponentActivity
++import com.example.obstacles.highscores.HighScoresActivity
++
++class MenuActivity : ComponentActivity() {
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        setContentView(R.layout.activity_menu)
++
++        findViewById<Button>(R.id.btnButtonsSlow).setOnClickListener {
++            launchGame(ControlMode.BUTTONS, SpeedMode.SLOW)
++        }
++        findViewById<Button>(R.id.btnButtonsFast).setOnClickListener {
++            launchGame(ControlMode.BUTTONS, SpeedMode.FAST)
++        }
++        findViewById<Button>(R.id.btnSensors).setOnClickListener {
++            launchGame(ControlMode.SENSORS, SpeedMode.SLOW)
++        }
++        findViewById<Button>(R.id.btnHighScores).setOnClickListener {
++            startActivity(Intent(this, HighScoresActivity::class.java))
++        }
++    }
++
++    private fun launchGame(controlMode: ControlMode, speedMode: SpeedMode) {
++        val intent = Intent(this, MainActivity::class.java).apply {
++            putExtra(MainActivity.EXTRA_CONTROL_MODE, controlMode.name)
++            putExtra(MainActivity.EXTRA_SPEED_MODE, speedMode.name)
++        }
++        startActivity(intent)
++    }
++}
+diff --git a/app/src/main/java/com/example/obstacles/data/HighScore.kt b/app/src/main/java/com/example/obstacles/data/HighScore.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..7530517a075d8c12f5aee2b395d63f1f5857306f
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/data/HighScore.kt
+@@ -0,0 +1,8 @@
++package com.example.obstacles.data
++
++data class HighScore(
++    val points: Int,
++    val latitude: Double,
++    val longitude: Double,
++    val timestamp: Long
++)
+diff --git a/app/src/main/java/com/example/obstacles/data/HighScoreRepository.kt b/app/src/main/java/com/example/obstacles/data/HighScoreRepository.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..63217b642c240b2c338ec2ddff33b0d19c272fed
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/data/HighScoreRepository.kt
+@@ -0,0 +1,67 @@
++package com.example.obstacles.data
++
++import android.content.Context
++
++class HighScoreRepository(context: Context) {
++    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
++
++    fun getTopScores(): List<HighScore> {
++        val raw = prefs.getString(KEY_SCORES, null)
++        if (raw.isNullOrBlank()) {
++            val seed = seedScores()
++            saveScores(seed)
++            return seed
++        }
++        return parseScores(raw)
++    }
++
++    fun saveScores(scores: List<HighScore>) {
++        val normalized = scores.sortedByDescending { it.points }.take(MAX_SCORES)
++        prefs.edit().putString(KEY_SCORES, serializeScores(normalized)).apply()
++    }
++
++    private fun seedScores(): List<HighScore> {
++        val now = System.currentTimeMillis()
++        val samples = listOf(
++            HighScore(points = 960, latitude = 32.0853, longitude = 34.7818, timestamp = now - 86_400_000L),
++            HighScore(points = 910, latitude = 31.7683, longitude = 35.2137, timestamp = now - 64_800_000L),
++            HighScore(points = 880, latitude = 32.7940, longitude = 34.9896, timestamp = now - 43_200_000L),
++            HighScore(points = 830, latitude = 31.2529, longitude = 34.7915, timestamp = now - 36_000_000L),
++            HighScore(points = 800, latitude = 29.5577, longitude = 34.9519, timestamp = now - 28_800_000L),
++            HighScore(points = 770, latitude = 32.6996, longitude = 35.3035, timestamp = now - 21_600_000L),
++            HighScore(points = 740, latitude = 32.3215, longitude = 34.8532, timestamp = now - 18_000_000L),
++            HighScore(points = 710, latitude = 31.0461, longitude = 34.8516, timestamp = now - 14_400_000L),
++            HighScore(points = 680, latitude = 32.0171, longitude = 34.7454, timestamp = now - 10_800_000L),
++            HighScore(points = 650, latitude = 32.0853, longitude = 34.7818, timestamp = now - 7_200_000L)
++        )
++        return samples.sortedByDescending { it.points }.take(MAX_SCORES)
++    }
++
++    private fun serializeScores(scores: List<HighScore>): String {
++        return scores.joinToString(";") { score ->
++            listOf(score.points, score.latitude, score.longitude, score.timestamp).joinToString(",")
++        }
++    }
++
++    private fun parseScores(raw: String): List<HighScore> {
++        if (raw.isBlank()) return emptyList()
++        return raw.split(";")
++            .mapNotNull { token ->
++                val parts = token.split(",")
++                if (parts.size != 4) return@mapNotNull null
++                val points = parts[0].toIntOrNull() ?: return@mapNotNull null
++                val lat = parts[1].toDoubleOrNull() ?: return@mapNotNull null
++                val lon = parts[2].toDoubleOrNull() ?: return@mapNotNull null
++                val timestamp = parts[3].toLongOrNull() ?: return@mapNotNull null
++                HighScore(points = points, latitude = lat, longitude = lon, timestamp = timestamp)
++            }
++            .sortedByDescending { it.points }
++            .take(MAX_SCORES)
++    }
++
++    companion object {
++        private const val PREFS_NAME = "high_scores"
++        private const val KEY_SCORES = "scores"
++        private const val MAX_SCORES = 10
++    }
++}
+diff --git a/app/src/main/java/com/example/obstacles/game/GameConfig.kt b/app/src/main/java/com/example/obstacles/game/GameConfig.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..09bc5c10e5a28b6ce53bd69ad113f1141035ae44
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/game/GameConfig.kt
+@@ -0,0 +1,12 @@
++package com.example.obstacles.game
++
++data class GameConfig(
++    val laneCount: Int = 5,
++    val obstacleRows: Int = 6,
++    val startingLives: Int = 3,
++    val moveIntervalSeconds: Float = 0.4f,
++    val minSpawnInterval: Float = 0.7f,
++    val maxSpawnInterval: Float = 1.1f
++) {
++    val carRow: Int = obstacleRows
++}
+diff --git a/app/src/main/java/com/example/obstacles/game/GameEngineListener.kt b/app/src/main/java/com/example/obstacles/game/GameEngineListener.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..3b50085532701a7d4ef0e90151fb2014b4922f63
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/game/GameEngineListener.kt
+@@ -0,0 +1,7 @@
++package com.example.obstacles.game
++
++interface GameEngineListener {
++    fun onStateUpdated(state: GameState)
++    fun onCrash(state: GameState)
++    fun onGameOver(state: GameState)
++}
+diff --git a/app/src/main/java/com/example/obstacles/game/GameState.kt b/app/src/main/java/com/example/obstacles/game/GameState.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..4c3cea370524d0d9d91b3bf556fa4309d160906e
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/game/GameState.kt
+@@ -0,0 +1,21 @@
++package com.example.obstacles.game
++
++data class GameState(
++    val lives: Int,
++    val carLane: Int,
++    val obstacles: List<Obstacle>
++)
++
++data class Obstacle(
++    val lane: Int,
++    val row: Int,
++    val kind: ObstacleKind
++)
++
++enum class ObstacleKind {
++    CONE,
++    BARRIER,
++    TIRE
++}
+diff --git a/app/src/main/java/com/example/obstacles/game/ObstacleGameEngine.kt b/app/src/main/java/com/example/obstacles/game/ObstacleGameEngine.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..67fdeb69a66ca2748225f4dc9c8a1f13397a76a5
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/game/ObstacleGameEngine.kt
+@@ -0,0 +1,115 @@
++package com.example.obstacles.game
++
++import kotlin.random.Random
++
++class ObstacleGameEngine(
++    val config: GameConfig,
++    private val random: Random = Random.Default
++) {
++    var listener: GameEngineListener? = null
++
++    private var lives: Int = config.startingLives
++    private var carLane: Int = config.laneCount / 2
++    private val obstacles = mutableListOf<Obstacle>()
++
++    private var spawnTimer = 0f
++    private var moveTimer = 0f
++    private var nextSpawnIn = randomSpawnInterval()
++
++    val state: GameState
++        get() = GameState(lives, carLane, obstacles.toList())
++
++    fun reset() {
++        lives = config.startingLives
++        carLane = config.laneCount / 2
++        obstacles.clear()
++        spawnTimer = 0f
++        moveTimer = 0f
++        nextSpawnIn = randomSpawnInterval()
++        listener?.onStateUpdated(state)
++    }
++
++    fun moveCar(direction: Int) {
++        val next = carLane + direction
++        carLane = when {
++            next < 0 -> config.laneCount - 1
++            next >= config.laneCount -> 0
++            else -> next
++        }
++        listener?.onStateUpdated(state)
++    }
++
++    fun update(dt: Float) {
++        if (dt <= 0f) return
++
++        var stateChanged = false
++        spawnTimer += dt
++        moveTimer += dt
++
++        if (spawnTimer >= nextSpawnIn) {
++            stateChanged = spawnObstacle() || stateChanged
++            spawnTimer = 0f
++            nextSpawnIn = randomSpawnInterval()
++        }
++
++        while (moveTimer >= config.moveIntervalSeconds) {
++            stateChanged = stepMovement() || stateChanged
++            moveTimer -= config.moveIntervalSeconds
++        }
++
++        if (stateChanged) {
++            listener?.onStateUpdated(state)
++        }
++    }
++
++    private fun spawnObstacle(): Boolean {
++        val availableLanes = (0 until config.laneCount).filter { lane ->
++            obstacles.none { it.lane == lane && it.row == 0 }
++        }
++        if (availableLanes.isEmpty()) return false
++
++        val lane = availableLanes[random.nextInt(availableLanes.size)]
++        val kind = ObstacleKind.entries[random.nextInt(ObstacleKind.entries.size)]
++        obstacles.add(Obstacle(lane = lane, row = 0, kind = kind))
++        return true
++    }
++
++    private fun stepMovement(): Boolean {
++        if (obstacles.isEmpty()) return false
++        var crashed = false
++        var collisionState: GameState? = null
++
++        val iterator = obstacles.listIterator()
++        while (iterator.hasNext()) {
++            val obstacle = iterator.next()
++            val nextRow = obstacle.row + 1
++
++            if (nextRow >= config.carRow) {
++                if (obstacle.lane == carLane && !crashed) {
++                    crashed = true
++                    lives = (lives - 1).coerceAtLeast(0)
++                    collisionState = state
++                }
++                iterator.remove()
++                continue
++            }
++
++            iterator.set(obstacle.copy(row = nextRow))
++        }
++
++        if (crashed && collisionState != null) {
++            listener?.onCrash(collisionState)
++            if (lives <= 0) {
++                listener?.onGameOver(state)
++            }
++        }
++
++        return true
++    }
++
++    private fun randomSpawnInterval(): Float {
++        val min = config.minSpawnInterval
++        val max = config.maxSpawnInterval
++        return min + random.nextFloat() * (max - min)
++    }
++}
+diff --git a/app/src/main/java/com/example/obstacles/highscores/HighScoreSelectionListener.kt b/app/src/main/java/com/example/obstacles/highscores/HighScoreSelectionListener.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..0bff57b754853df863fd8bd02b12f3fb0282ffb4
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/highscores/HighScoreSelectionListener.kt
+@@ -0,0 +1,7 @@
++package com.example.obstacles.highscores
++
++import com.example.obstacles.data.HighScore
++
++interface HighScoreSelectionListener {
++    fun onHighScoreSelected(score: HighScore)
++}
+diff --git a/app/src/main/java/com/example/obstacles/highscores/HighScoresActivity.kt b/app/src/main/java/com/example/obstacles/highscores/HighScoresActivity.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..e5abf02e39e347e8ef5fd8e0730affaa4dd5ed08
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/highscores/HighScoresActivity.kt
+@@ -0,0 +1,27 @@
++package com.example.obstacles.highscores
++
++import android.os.Bundle
++import androidx.fragment.app.FragmentActivity
++import com.example.obstacles.R
++import com.example.obstacles.data.HighScore
++
++class HighScoresActivity : FragmentActivity(), HighScoreSelectionListener {
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        setContentView(R.layout.activity_high_scores)
++
++        if (savedInstanceState == null) {
++            supportFragmentManager.beginTransaction()
++                .replace(R.id.highScoresListContainer, HighScoresTableFragment())
++                .replace(R.id.highScoresMapContainer, HighScoresMapFragment())
++                .commit()
++        }
++    }
++
++    override fun onHighScoreSelected(score: HighScore) {
++        val mapFragment = supportFragmentManager.findFragmentById(R.id.highScoresMapContainer)
++            as? HighScoresMapFragment
++        mapFragment?.showLocation(score)
++    }
++}
+diff --git a/app/src/main/java/com/example/obstacles/highscores/HighScoresMapFragment.kt b/app/src/main/java/com/example/obstacles/highscores/HighScoresMapFragment.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..d472d59db2b28c0ea468138ea2bd3e87adf1a8c9
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/highscores/HighScoresMapFragment.kt
+@@ -0,0 +1,62 @@
++package com.example.obstacles.highscores
++
++import android.os.Bundle
++import android.view.LayoutInflater
++import android.view.View
++import android.view.ViewGroup
++import android.widget.ImageView
++import android.widget.TextView
++import androidx.constraintlayout.widget.ConstraintLayout
++import androidx.constraintlayout.widget.ConstraintSet
++import androidx.fragment.app.Fragment
++import com.example.obstacles.R
++import com.example.obstacles.data.HighScore
++import kotlin.math.max
++import kotlin.math.min
++
++class HighScoresMapFragment : Fragment() {
++
++    private var mapContainer: ConstraintLayout? = null
++    private var markerView: ImageView? = null
++    private var locationText: TextView? = null
++
++    override fun onCreateView(
++        inflater: LayoutInflater,
++        container: ViewGroup?,
++        savedInstanceState: Bundle?
++    ): View {
++        return inflater.inflate(R.layout.fragment_high_scores_map, container, false)
++    }
++
++    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
++        mapContainer = view.findViewById(R.id.mapContainer)
++        markerView = view.findViewById(R.id.mapMarker)
++        locationText = view.findViewById(R.id.mapLocationText)
++    }
++
++    fun showLocation(score: HighScore) {
++        locationText?.text = getString(
++            R.string.high_score_location,
++            score.latitude,
++            score.longitude
++        )
++
++        val container = mapContainer ?: return
++        val marker = markerView ?: return
++
++        val horizontalBias = normalize(score.longitude, -180.0, 180.0)
++        val verticalBias = 1f - normalize(score.latitude, -90.0, 90.0)
++
++        val set = ConstraintSet()
++        set.clone(container)
++        set.setHorizontalBias(marker.id, horizontalBias)
++        set.setVerticalBias(marker.id, verticalBias)
++        set.applyTo(container)
++    }
++
++    private fun normalize(value: Double, minValue: Double, maxValue: Double): Float {
++        if (maxValue <= minValue) return 0.5f
++        val ratio = ((value - minValue) / (maxValue - minValue)).toFloat()
++        return min(1f, max(0f, ratio))
++    }
++}
+diff --git a/app/src/main/java/com/example/obstacles/highscores/HighScoresTableFragment.kt b/app/src/main/java/com/example/obstacles/highscores/HighScoresTableFragment.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..11ea733de22a8643d6e4bfb502f786e18155ec2c
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/highscores/HighScoresTableFragment.kt
+@@ -0,0 +1,116 @@
++package com.example.obstacles.highscores
++
++import android.content.Context
++import android.os.Bundle
++import android.view.LayoutInflater
++import android.view.View
++import android.view.ViewGroup
++import android.widget.TextView
++import androidx.fragment.app.Fragment
++import androidx.recyclerview.widget.DiffUtil
++import androidx.recyclerview.widget.LinearLayoutManager
++import androidx.recyclerview.widget.ListAdapter
++import androidx.recyclerview.widget.RecyclerView
++import com.example.obstacles.R
++import com.example.obstacles.data.HighScore
++import com.example.obstacles.data.HighScoreRepository
++import java.text.DateFormat
++import java.util.Date
++
++class HighScoresTableFragment : Fragment() {
++
++    private var selectionListener: HighScoreSelectionListener? = null
++    private lateinit var repository: HighScoreRepository
++
++    override fun onAttach(context: Context) {
++        super.onAttach(context)
++        selectionListener = context as? HighScoreSelectionListener
++        repository = HighScoreRepository(context)
++    }
++
++    override fun onDetach() {
++        selectionListener = null
++        super.onDetach()
++    }
++
++    override fun onCreateView(
++        inflater: LayoutInflater,
++        container: ViewGroup?,
++        savedInstanceState: Bundle?
++    ): View {
++        return inflater.inflate(R.layout.fragment_high_scores_table, container, false)
++    }
++
++    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
++        val recyclerView = view.findViewById<RecyclerView>(R.id.highScoresRecycler)
++        val adapter = HighScoreAdapter { score ->
++            selectionListener?.onHighScoreSelected(score)
++        }
++
++        recyclerView.layoutManager = LinearLayoutManager(requireContext())
++        recyclerView.adapter = adapter
++
++        val scores = repository.getTopScores()
++        adapter.submitList(scores)
++        scores.firstOrNull()?.let { selectionListener?.onHighScoreSelected(it) }
++    }
++
++    private class HighScoreAdapter(
++        private val onClick: (HighScore) -> Unit
++    ) : ListAdapter<HighScore, HighScoreViewHolder>(DIFF) {
++
++        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): HighScoreViewHolder {
++            val view = LayoutInflater.from(parent.context)
++                .inflate(R.layout.item_high_score, parent, false)
++            return HighScoreViewHolder(view, onClick)
++        }
++
++        override fun onBindViewHolder(holder: HighScoreViewHolder, position: Int) {
++            holder.bind(getItem(position), position)
++        }
++
++        companion object {
++            private val DIFF = object : DiffUtil.ItemCallback<HighScore>() {
++                override fun areItemsTheSame(oldItem: HighScore, newItem: HighScore): Boolean {
++                    return oldItem.timestamp == newItem.timestamp
++                }
++
++                override fun areContentsTheSame(oldItem: HighScore, newItem: HighScore): Boolean {
++                    return oldItem == newItem
++                }
++            }
++        }
++    }
++
++    private class HighScoreViewHolder(
++        itemView: View,
++        private val onClick: (HighScore) -> Unit
++    ) : RecyclerView.ViewHolder(itemView) {
++        private val rankText: TextView = itemView.findViewById(R.id.textRank)
++        private val scoreText: TextView = itemView.findViewById(R.id.textScore)
++        private val locationText: TextView = itemView.findViewById(R.id.textLocation)
++        private val dateText: TextView = itemView.findViewById(R.id.textDate)
++        private val dateFormat = DateFormat.getDateInstance(DateFormat.MEDIUM)
++
++        fun bind(score: HighScore, position: Int) {
++            rankText.text = itemView.context.getString(R.string.high_score_rank, position + 1)
++            scoreText.text = itemView.context.getString(R.string.high_score_points, score.points)
++            locationText.text = itemView.context.getString(
++                R.string.high_score_location,
++                score.latitude,
++                score.longitude
++            )
++            dateText.text = dateFormat.format(Date(score.timestamp))
++
++            itemView.setOnClickListener { onClick(score) }
++        }
++    }
++}
+diff --git a/app/src/main/java/com/example/obstacles/services/AndroidHapticsService.kt b/app/src/main/java/com/example/obstacles/services/AndroidHapticsService.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..3b83af8630ebae12c889b2bad4448674c3bd72e1
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/services/AndroidHapticsService.kt
+@@ -0,0 +1,57 @@
++package com.example.obstacles.services
++
++import android.content.Context
++import android.os.Build
++import android.os.VibrationEffect
++import android.os.Vibrator
++import android.os.VibratorManager
++import android.view.HapticFeedbackConstants
++import android.view.View
++
++class AndroidHapticsService(
++    private val context: Context,
++    private val fallbackView: View?
++) : HapticsService {
++
++    override fun performCrashHaptic() {
++        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
++            val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
++            manager?.defaultVibrator
++        } else {
++            @Suppress("DEPRECATION")
++            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
++        }
++
++        val didVibrate = vibrator?.let { service ->
++            if (!service.hasVibrator()) return@let false
++            try {
++                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++                    service.vibrate(
++                        VibrationEffect.createOneShot(
++                            200,
++                            VibrationEffect.DEFAULT_AMPLITUDE
++                        )
++                    )
++                } else {
++                    @Suppress("DEPRECATION")
++                    service.vibrate(200)
++                }
++                true
++            } catch (_: Exception) {
++                false
++            }
++        } ?: false
++
++        if (!didVibrate) {
++            fallbackHaptic()
++        }
++    }
++
++    private fun fallbackHaptic() {
++        fallbackView?.performHapticFeedback(
++            HapticFeedbackConstants.LONG_PRESS,
++            HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING or
++                HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
++        )
++    }
++}
+diff --git a/app/src/main/java/com/example/obstacles/services/HapticsService.kt b/app/src/main/java/com/example/obstacles/services/HapticsService.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..8e442ac3a95a630af6f89c0ec0badf19e7429dec
+--- /dev/null
++++ b/app/src/main/java/com/example/obstacles/services/HapticsService.kt
+@@ -0,0 +1,5 @@
++package com.example.obstacles.services
++
++interface HapticsService {
++    fun performCrashHaptic()
++}
+diff --git a/app/src/main/java/com/example/obstacles/ui/theme/Color.kt b/app/src/main/java/com/example/obstacles/ui/theme/Color.kt
+deleted file mode 100644
+index 58938e12326d5bc2eb6e54173e245c198b57d8e2..0000000000000000000000000000000000000000
+--- a/app/src/main/java/com/example/obstacles/ui/theme/Color.kt
++++ /dev/null
+@@ -1,11 +0,0 @@
+-package com.example.obstacles.ui.theme
+-
+-import androidx.compose.ui.graphics.Color
+-
+-val Purple80 = Color(0xFFD0BCFF)
+-val PurpleGrey80 = Color(0xFFCCC2DC)
+-val Pink80 = Color(0xFFEFB8C8)
+-
+-val Purple40 = Color(0xFF6650a4)
+-val PurpleGrey40 = Color(0xFF625b71)
+-val Pink40 = Color(0xFF7D5260)
+diff --git a/app/src/main/java/com/example/obstacles/ui/theme/Theme.kt b/app/src/main/java/com/example/obstacles/ui/theme/Theme.kt
+deleted file mode 100644
+index 59c17b0a9973833529ce6c07ac0194893e51b217..0000000000000000000000000000000000000000
+--- a/app/src/main/java/com/example/obstacles/ui/theme/Theme.kt
++++ /dev/null
+@@ -1,58 +0,0 @@
+-package com.example.obstacles.ui.theme
+-
+-import android.app.Activity
+-import android.os.Build
+-import androidx.compose.foundation.isSystemInDarkTheme
+-import androidx.compose.material3.MaterialTheme
+-import androidx.compose.material3.darkColorScheme
+-import androidx.compose.material3.dynamicDarkColorScheme
+-import androidx.compose.material3.dynamicLightColorScheme
+-import androidx.compose.material3.lightColorScheme
+-import androidx.compose.runtime.Composable
+-import androidx.compose.ui.platform.LocalContext
+-
+-private val DarkColorScheme = darkColorScheme(
+-    primary = Purple80,
+-    secondary = PurpleGrey80,
+-    tertiary = Pink80
+-)
+-
+-private val LightColorScheme = lightColorScheme(
+-    primary = Purple40,
+-    secondary = PurpleGrey40,
+-    tertiary = Pink40
+-)
+-
+-@Composable
+-fun ObstaclesTheme(
+-    darkTheme: Boolean = isSystemInDarkTheme(),
+-    dynamicColor: Boolean = true,
+-    content: @Composable () -> Unit
+-) {
+-    val colorScheme = when {
+-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+-            val context = LocalContext.current
+-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+-        }
+-
+-        darkTheme -> DarkColorScheme
+-        else -> LightColorScheme
+-    }
+-
+-    MaterialTheme(
+-        colorScheme = colorScheme,
+-        typography = Typography,
+-        content = content
+-    )
+-}
+diff --git a/app/src/main/java/com/example/obstacles/ui/theme/Type.kt b/app/src/main/java/com/example/obstacles/ui/theme/Type.kt
+deleted file mode 100644
+index d4353535f9dc2fdc38ca18035da42b61e2022648..0000000000000000000000000000000000000000
+--- a/app/src/main/java/com/example/obstacles/ui/theme/Type.kt
++++ /dev/null
+@@ -1,34 +0,0 @@
+-package com.example.obstacles.ui.theme
+-
+-import androidx.compose.material3.Typography
+-import androidx.compose.ui.text.TextStyle
+-import androidx.compose.ui.text.font.FontFamily
+-import androidx.compose.ui.text.font.FontWeight
+-import androidx.compose.ui.unit.sp
+-
+-val Typography = Typography(
+-    bodyLarge = TextStyle(
+-        fontFamily = FontFamily.Default,
+-        fontWeight = FontWeight.Normal,
+-        fontSize = 16.sp,
+-        lineHeight = 24.sp,
+-        letterSpacing = 0.5.sp
+-    )
+-)
+diff --git a/app/src/main/res/drawable/bg_map.xml b/app/src/main/res/drawable/bg_map.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..16e9eb3c1ff07658b27adc8c360cda4a295517e9
+--- /dev/null
++++ b/app/src/main/res/drawable/bg_map.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<shape xmlns:android="http://schemas.android.com/apk/res/android">
++    <gradient
++        android:angle="90"
++        android:endColor="#3A4B5A"
++        android:startColor="#2B3945" />
++    <corners android:radius="12dp" />
++</shape>
+diff --git a/app/src/main/res/drawable/ic_map_pin.xml b/app/src/main/res/drawable/ic_map_pin.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..93f15499d52e38527a0ba6e93f2896c5d3d61856
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_map_pin.xml
+@@ -0,0 +1,9 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="#FF5252"
++        android:pathData="M12,2c-3.31,0 -6,2.69 -6,6c0,4.5 6,12 6,12s6,-7.5 6,-12c0,-3.31 -2.69,-6 -6,-6zm0,8.5c-1.38,0 -2.5,-1.12 -2.5,-2.5s1.12,-2.5 2.5,-2.5s2.5,1.12 2.5,2.5s-1.12,2.5 -2.5,2.5z" />
++</vector>
+diff --git a/app/src/main/res/layout/activity_high_scores.xml b/app/src/main/res/layout/activity_high_scores.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..7ee4dde464d1d098a513c3c8810e71e3955191c9
+--- /dev/null
++++ b/app/src/main/res/layout/activity_high_scores.xml
+@@ -0,0 +1,44 @@
++<?xml version="1.0" encoding="utf-8"?>
++<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    android:background="@color/road_dark">
++
++    <TextView
++        android:id="@+id/highScoresTitle"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_marginTop="16dp"
++        android:text="@string/high_scores_title"
++        android:textColor="@color/white"
++        android:textSize="20sp"
++        android:textStyle="bold"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toTopOf="parent" />
++
++    <androidx.fragment.app.FragmentContainerView
++        android:id="@+id/highScoresListContainer"
++        android:layout_width="0dp"
++        android:layout_height="0dp"
++        android:layout_marginHorizontal="16dp"
++        android:layout_marginTop="12dp"
++        app:layout_constraintBottom_toTopOf="@id/highScoresMapContainer"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toBottomOf="@id/highScoresTitle" />
++
++    <androidx.fragment.app.FragmentContainerView
++        android:id="@+id/highScoresMapContainer"
++        android:layout_width="0dp"
++        android:layout_height="0dp"
++        android:layout_marginHorizontal="16dp"
++        android:layout_marginTop="12dp"
++        android:layout_marginBottom="16dp"
++        app:layout_constraintBottom_toBottomOf="parent"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toBottomOf="@id/highScoresListContainer" />
++
++</androidx.constraintlayout.widget.ConstraintLayout>
+diff --git a/app/src/main/res/layout/activity_main.xml b/app/src/main/res/layout/activity_main.xml
+index 3f30c20535b6d5cc501c0d4dc7707d88511d1cca..43ae2285a90d1808ab83cd1fe209061180626cf2 100644
+--- a/app/src/main/res/layout/activity_main.xml
++++ b/app/src/main/res/layout/activity_main.xml
+@@ -31,73 +31,68 @@
+             android:layout_marginStart="6dp"
+             android:contentDescription="@string/content_description_life"
+             android:src="@drawable/ic_heart" />
+ 
+         <ImageView
+             android:id="@+id/heart3"
+             android:layout_width="28dp"
+             android:layout_height="28dp"
+             android:layout_marginStart="6dp"
+             android:contentDescription="@string/content_description_life"
+             android:src="@drawable/ic_heart" />
+     </LinearLayout>
+ 
+     <FrameLayout
+         android:id="@+id/gameArea"
+         android:layout_width="0dp"
+         android:layout_height="0dp"
+         android:background="@drawable/bg_road"
+         android:paddingBottom="112dp"
+         app:layout_constraintBottom_toBottomOf="parent"
+         app:layout_constraintEnd_toEndOf="parent"
+         app:layout_constraintStart_toStartOf="parent"
+         app:layout_constraintTop_toBottomOf="@id/topBar">
+ 
+-        <ImageView
+-            android:id="@+id/car"
+-            android:layout_width="46dp"
+-            android:layout_height="74dp"
+-            android:layout_gravity="bottom|center_horizontal"
+-            android:layout_marginBottom="16dp"
+-            android:contentDescription="@string/content_description_car"
+-            android:src="@drawable/ic_car" />
+-
+-        <LinearLayout
+-            android:id="@+id/lanesContainer"
+-            android:layout_width="match_parent"
+-            android:layout_height="match_parent"
+-            android:orientation="horizontal" />
++        <LinearLayout
++            android:id="@+id/lanesContainer"
++            android:layout_width="match_parent"
++            android:layout_height="match_parent"
++            android:orientation="horizontal" />
+ 
+     </FrameLayout>
+ 
+     <ImageButton
+         android:id="@+id/btnLeft"
+         android:layout_width="64dp"
+         android:layout_height="64dp"
++        android:layout_marginStart="16dp"
++        android:layout_marginBottom="28dp"
+         android:background="@drawable/bg_round_button"
+         android:contentDescription="@string/content_description_left"
+         android:padding="14dp"
+         android:src="@drawable/ic_arrow_left"
+         android:tint="@color/white"
+         app:layout_constraintBottom_toBottomOf="parent"
+         app:layout_constraintStart_toStartOf="parent"
+         app:layout_constraintTop_toBottomOf="@id/topBar"
+         app:layout_constraintVertical_bias="0.9"
+-        app:layout_constraintVertical_chainStyle="packed"
+-        android:layout_marginStart="16dp"
+-        android:layout_marginBottom="28dp" />
++        app:layout_constraintVertical_chainStyle="packed" />
+ 
+     <ImageButton
+         android:id="@+id/btnRight"
+         android:layout_width="64dp"
+         android:layout_height="64dp"
++        android:layout_marginEnd="16dp"
++        android:layout_marginBottom="28dp"
+         android:background="@drawable/bg_round_button"
+         android:contentDescription="@string/content_description_right"
+         android:padding="14dp"
+         android:src="@drawable/ic_arrow_right"
+         android:tint="@color/white"
+         app:layout_constraintBottom_toBottomOf="parent"
+         app:layout_constraintEnd_toEndOf="parent"
+         app:layout_constraintTop_toBottomOf="@id/topBar"
+         app:layout_constraintVertical_bias="0.9"
+-        android:layout_marginEnd="16dp"
+-        android:layout_marginBottom="28dp" />
++        app:layout_constraintVertical_chainStyle="packed" />
+ 
+ </androidx.constraintlayout.widget.ConstraintLayout>
+diff --git a/app/src/main/res/layout/activity_menu.xml b/app/src/main/res/layout/activity_menu.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..d2c6b9484681d91e6d0abf487fac3311a8881b66
+--- /dev/null
++++ b/app/src/main/res/layout/activity_menu.xml
+@@ -0,0 +1,66 @@
++<?xml version="1.0" encoding="utf-8"?>
++<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    android:background="@color/road_dark">
++
++    <TextView
++        android:id="@+id/menuTitle"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:text="@string/menu_title"
++        android:textColor="@color/white"
++        android:textSize="22sp"
++        android:textStyle="bold"
++        app:layout_constraintBottom_toTopOf="@id/btnButtonsSlow"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toTopOf="parent"
++        app:layout_constraintVertical_chainStyle="packed" />
++
++    <Button
++        android:id="@+id/btnButtonsSlow"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_marginHorizontal="32dp"
++        android:layout_marginTop="24dp"
++        android:text="@string/menu_buttons_slow"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toBottomOf="@id/menuTitle" />
++
++    <Button
++        android:id="@+id/btnButtonsFast"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_marginHorizontal="32dp"
++        android:layout_marginTop="12dp"
++        android:text="@string/menu_buttons_fast"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toBottomOf="@id/btnButtonsSlow" />
++
++    <Button
++        android:id="@+id/btnSensors"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_marginHorizontal="32dp"
++        android:layout_marginTop="12dp"
++        android:text="@string/menu_sensors"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toBottomOf="@id/btnButtonsFast" />
++
++    <Button
++        android:id="@+id/btnHighScores"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_marginHorizontal="32dp"
++        android:layout_marginTop="24dp"
++        android:text="@string/menu_high_scores"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toBottomOf="@id/btnSensors" />
++
++</androidx.constraintlayout.widget.ConstraintLayout>
+diff --git a/app/src/main/res/layout/fragment_high_scores_map.xml b/app/src/main/res/layout/fragment_high_scores_map.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..12f2c75565d5350fa957bb46e4f10a571087f641
+--- /dev/null
++++ b/app/src/main/res/layout/fragment_high_scores_map.xml
+@@ -0,0 +1,34 @@
++<?xml version="1.0" encoding="utf-8"?>
++<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:id="@+id/mapContainer"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    android:background="@drawable/bg_map">
++
++    <ImageView
++        android:id="@+id/mapMarker"
++        android:layout_width="24dp"
++        android:layout_height="24dp"
++        android:contentDescription="@string/high_score_marker"
++        android:src="@drawable/ic_map_pin"
++        app:layout_constraintBottom_toBottomOf="parent"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintHorizontal_bias="0.5"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toTopOf="parent"
++        app:layout_constraintVertical_bias="0.5" />
++
++    <TextView
++        android:id="@+id/mapLocationText"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_marginBottom="12dp"
++        android:text="@string/high_score_location_empty"
++        android:textColor="@color/white"
++        android:textSize="14sp"
++        app:layout_constraintBottom_toBottomOf="parent"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent" />
++
++</androidx.constraintlayout.widget.ConstraintLayout>
+diff --git a/app/src/main/res/layout/fragment_high_scores_table.xml b/app/src/main/res/layout/fragment_high_scores_table.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..a4b75c1e45998db8ba76e091b9b453fa2f84c58f
+--- /dev/null
++++ b/app/src/main/res/layout/fragment_high_scores_table.xml
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="utf-8"?>
++<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent">
++
++    <androidx.recyclerview.widget.RecyclerView
++        android:id="@+id/highScoresRecycler"
++        android:layout_width="0dp"
++        android:layout_height="0dp"
++        android:clipToPadding="false"
++        android:padding="8dp"
++        app:layout_constraintBottom_toBottomOf="parent"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toTopOf="parent" />
++
++</androidx.constraintlayout.widget.ConstraintLayout>
+diff --git a/app/src/main/res/layout/item_high_score.xml b/app/src/main/res/layout/item_high_score.xml
+new file mode 100644
+index 0000000000000000000000000000000000000000..912aeb1d269c16cb75917a977dbb84be3c773770
+--- /dev/null
++++ b/app/src/main/res/layout/item_high_score.xml
+@@ -0,0 +1,45 @@
++<?xml version="1.0" encoding="utf-8"?>
++<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:background="@drawable/bg_round_button"
++    android:padding="12dp">
++
++    <TextView
++        android:id="@+id/textRank"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:textColor="@color/white"
++        android:textStyle="bold"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toTopOf="parent" />
++
++    <TextView
++        android:id="@+id/textScore"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:textColor="@color/white"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toBottomOf="@id/textRank" />
++
++    <TextView
++        android:id="@+id/textLocation"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:textColor="@color/white"
++        android:textSize="12sp"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintStart_toStartOf="parent"
++        app:layout_constraintTop_toBottomOf="@id/textScore" />
++
++    <TextView
++        android:id="@+id/textDate"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:textColor="@color/white"
++        android:textSize="12sp"
++        app:layout_constraintEnd_toEndOf="parent"
++        app:layout_constraintTop_toTopOf="parent" />
++
++</androidx.constraintlayout.widget.ConstraintLayout>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index dece887de1ef7b4098f89db71046cb495bfaa11c..362b0772e32aada83ccf7e875b73d3426af5f5e8 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -1,9 +1,20 @@
+ <resources>
+     <string name="app_name">Obstacles</string>
+     <string name="toast_crash">אופס! פגעת במכשול.</string>
+     <string name="toast_restart">מחדש! שלושה חיים חדשים.</string>
+     <string name="content_description_life">חיי השחקן</string>
+     <string name="content_description_car">מכונית השחקן</string>
+     <string name="content_description_left">זוז שמאלה</string>
+     <string name="content_description_right">זוז ימינה</string>
++    <string name="menu_title">בחר מצב משחק</string>
++    <string name="menu_buttons_slow">כפתורים - איטי</string>
++    <string name="menu_buttons_fast">כפתורים - מהיר</string>
++    <string name="menu_sensors">חיישנים</string>
++    <string name="menu_high_scores">טבלת שיאים</string>
++    <string name="high_scores_title">טבלת שיאים</string>
++    <string name="high_score_rank">#%1$d</string>
++    <string name="high_score_points">נקודות: %1$d</string>
++    <string name="high_score_location">מיקום: %.4f, %.4f</string>
++    <string name="high_score_location_empty">בחר שיא כדי להציג מיקום</string>
++    <string name="high_score_marker">סימון מיקום שיא</string>
+ </resources>
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+index c9e697ecf07b915b1312e7ef9cf042aa6ad0fd7f..d11dde15320d1b39c32cd6cadb8f642b196bb736 100644
+--- a/gradle/libs.versions.toml
++++ b/gradle/libs.versions.toml
+@@ -1,32 +1,25 @@
+ [versions]
+ agp = "8.10.1"
+ kotlin = "2.0.21"
+ coreKtx = "1.10.1"
+ junit = "4.13.2"
+ junitVersion = "1.1.5"
+ espressoCore = "3.5.1"
+ lifecycleRuntimeKtx = "2.6.1"
+-activityCompose = "1.8.0"
+-composeBom = "2024.09.00"
++activityKtx = "1.9.0"
++fragmentKtx = "1.7.1"
++recyclerView = "1.3.2"
+ 
+ [libraries]
+ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+ junit = { group = "junit", name = "junit", version.ref = "junit" }
+ androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+ androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
+-androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+-androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+-androidx-ui = { group = "androidx.compose.ui", name = "ui" }
+-androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+-androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+-androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling.preview" }
+-androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+-androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+-androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
++androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityKtx" }
++androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragmentKtx" }
++androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerView" }
+ 
+ [plugins]
+ android-application = { id = "com.android.application", version.ref = "agp" }
+ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+-kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+-
